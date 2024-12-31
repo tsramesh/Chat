@@ -259,6 +259,7 @@ void get_socket_buffer_sizes(int sockfd) {
 }
 
 size_t exchange_rsa_data(int sockfd, unsigned char **encrypted_data, size_t *encrypted_data_len, bool server_end) {
+    log_message(LOG_CRITICAL, process, __func__, __FILE__, __LINE__, "Attempting to exchange RSA keys between peers...");
     if(server_end){
         if (read(sockfd, encrypted_data_len, sizeof(uint32_t)) != sizeof(uint32_t)) 
             return -1; // Failed to read size

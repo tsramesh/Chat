@@ -348,25 +348,63 @@ int exchange_public_keys(int sockfd, const char *my_public_key, size_t my_public
     unsigned char *data = 0;
     size_t data_len = 0;
 
+    log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Exchanging public keys with the end point");
     if (server_end) { // Server-side logic
         data = malloc(my_public_key_len + sizeof(uint32_t));
+        if( !data ){
+            log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "FATAL: Memory allocation for public storage failed");
+            exit(-1);
+        }
+        log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Allocated %zu bytes for storing public key", my_public_key_len + sizeof(uint32_t));
+        
         data_len = htonl(my_public_key_len);
+        log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "converted public key length to network byte order");
+        
         memcpy(data, &data_len, sizeof(uint32_t));
+        log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "copied data length to the front of the \"data\" buffer");
+       
         memcpy(data + sizeof(uint32_t), my_public_key, my_public_key_len);
-        write(sockfd, data, my_public_key_len + sizeof(uint32_t));
+        log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "copy my_public_key in to \"data\" buffer");
+        
+        if ( write(sockfd, data, my_public_key_len + sizeof(uint32_t)) == -1) {
+            log_message(LOG_WARN, process, __func__, __FILE__, __LINE__, "ERR_%d: \"write\" on socket failed: %s", errno, strerror(errno));
+            return ret;
+        };
+        log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Sent public key to the other side");
+        
         free(data);
+        log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "freed \"data\" memory");
 
-        exchange_rsa_data(sockfd, &data, &data_len, server);
-        rsa_decrypt_with_private_key(my_private_key, data, data_len, (unsigned char **)their_public_key, their_public_key_len);
+        if ( exchange_rsa_data(sockfd, &data, &data_len, server) ){
+            if ( !rsa_decrypt_with_private_key(my_private_key, data, data_len, (unsigned char **)their_public_key, their_public_key_len) ) {
+                ret = 0;
+                log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Successfully exchanged RSA keys amongst peers");
+            }
+        }        
     } else {  // Step 3: Client-side logic
+        log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Reading peer public key length in network byte order");
         read(sockfd, &data_len, sizeof(uint32_t));
+    
+        log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Converting data length in network byte order to regular integer");
         *their_public_key_len = ntohl(data_len);
-        *their_public_key = malloc(*their_public_key_len);
+    
+        log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Allocating %zu bytes of memory to hold peer public key", *their_public_key_len);
+        if ( !(*their_public_key = malloc(*their_public_key_len)) ){
+            log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "FATAL: Memory allocation failed... immediate program termination");
+            exit(-1);
+        }
+
+        log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Reading the peer public key in to the allocated memory");
         read(sockfd, *their_public_key, *their_public_key_len);
         
-        rsa_encrypt_with_public_key(*their_public_key, (const unsigned char *)my_public_key, my_public_key_len, &data, &data_len);
-        exchange_rsa_data(sockfd, &data, &data_len, server);
+        if( !rsa_encrypt_with_public_key(*their_public_key, (const unsigned char *)my_public_key, my_public_key_len, &data, &data_len)) {
+            if( exchange_rsa_data(sockfd, &data, &data_len, server) ) {
+                ret = 0;
+                log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Successfully exchanged RSA keys amongst peers");
+            }
+        };
     }
+    log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Freeing up \"data\" allocated memory");
     free(data);
 
     return ret;
