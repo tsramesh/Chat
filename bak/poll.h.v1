@@ -1,0 +1,70 @@
+#ifndef POLL_H
+#define POLL_H
+
+#include "common.h"
+#include "sockmsg.h"
+
+// Polling macros (epoll or kqueue based on platform)
+#ifdef __linux__
+    #include <sys/epoll.h>
+    #define SETUP_POLL() ({ \
+        int epoll_fd = epoll_create1(0); \
+        CHECK(epoll_fd, "epoll_create1 failed", (void)0, CRITICAL_ERROR); \
+        epoll_fd; \
+    })
+
+    #define ADD_TO_POLL(poll_fd, socket_fd) ({ \
+        struct epoll_event event = { \
+            .events = EPOLLIN | EPOLLOUT, \
+            .data.fd = socket_fd \
+        }; \
+        CHECK(epoll_ctl(poll_fd, EPOLL_CTL_ADD, socket_fd, &event), "epoll_ctl ADD failed", (void)0, CRITICAL_ERROR); \
+    })
+
+    #define REMOVE_FROM_POLL(poll_fd, socket_fd) ({ \
+        CHECK(epoll_ctl(poll_fd, EPOLL_CTL_DEL, socket_fd, NULL), "epoll_ctl DEL failed", (void)0, CRITICAL_ERROR); \
+    })
+
+    #define WAIT_ON_POLL(poll_fd, events, max_events, timeout) \
+        epoll_wait(poll_fd, events, max_events, timeout)
+
+    #define GET_EVENT_FD(event, i) (((struct epoll_event *)(event))[i].data.fd)
+    #define EVENT_STRUCT struct epoll_event
+    #define EVENT_ARRAY(name, size) EVENT_STRUCT name[size]
+#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__)
+    #include <sys/event.h>
+    #include <sys/time.h>
+    #define SETUP_POLL() ({ \
+        int kq = kqueue(); \
+        CHECK(kq, "kqueue failed", (void)0, CRITICAL_ERROR); \
+        kq; \
+    })
+
+    #define ADD_TO_POLL(poll_fd, socket_fd) ({ \
+        struct kevent change; \
+        EV_SET(&change, socket_fd, EVFILT_READ | EVFILT_WRITE, EV_ADD, 0, 0, NULL); \
+        CHECK(kevent(poll_fd, &change, 1, NULL, 0, NULL), "kevent ADD failed", (void)0, CRITICAL_ERROR); \
+    })
+
+    #define REMOVE_FROM_POLL(poll_fd, socket_fd) ({ \
+        struct kevent change; \
+        EV_SET(&change, socket_fd, EVFILT_READ | EVFILT_WRITE, EV_DELETE, 0, 0, NULL); \
+        CHECK(kevent(poll_fd, &change, 1, NULL, 0, NULL), "kevent DELETE failed", (void)0, CRITICAL_ERROR); \
+    })
+
+    #define WAIT_ON_POLL(poll_fd, events, max_events, timeout) \
+        kevent(poll_fd, NULL, 0, events, max_events, NULL)
+
+    #define GET_EVENT_FD(event, i) (((struct kevent *)(event))[i].ident)
+    #define EVENT_STRUCT struct kevent
+    #define EVENT_ARRAY(name, size) EVENT_STRUCT name[size]
+#endif
+
+// Function declarations
+int set_non_blocking(int socket_fd);
+void poll_newconn(int server_fd, int poll_fd);
+void poll_data(int poll_fd, int client_fd);
+void poll_events(int server_fd, int poll_fd, void *events, int num_events);
+void * poll_loop(void * server_fd);
+
+#endif // POLL_H

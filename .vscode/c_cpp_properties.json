@@ -1,0 +1,14 @@
+{
+    "configurations": [
+        {
+            "name": "Mac",
+            "includePath": [
+                "${workspaceFolder}/**:/opt/homebrew/Cellar/openssl@3/3.4.0/include/",
+                "/Library/Developer/CommandLineTools/SDKs/MacOSX15.1.sdk/usr"
+            ],
+            "defines": [],
+            "macFrameworkPath": []
+        }
+    ],
+    "version": 4
+}

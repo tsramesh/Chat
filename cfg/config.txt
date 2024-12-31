@@ -1,0 +1,7 @@
+DB_NAME = FREE
+DB_USER = CHAT
+DB_PASS = chat
+DB_HOST = fedora
+DB_PORT = 1521
+PORT    = 6000
+LOGGING = 0x0001
