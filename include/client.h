@@ -7,6 +7,7 @@
 #include "conn.h"
 #include "net.h"
 #include "crypt.h"
+#include "file.h"
 
 // Server configuration file path
 char * config_file_path = NULL;

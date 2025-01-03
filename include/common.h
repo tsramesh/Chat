@@ -30,7 +30,6 @@
 #include <netinet/in.h>    // Internet address family (struct sockaddr_in)
 #include <arpa/inet.h>     // Internet address manipulation (inet_ntoa, inet_pton)
 #include <ifaddrs.h>
-#include <net/if.h>
 #include <ctype.h>
 #include <errno.h>
 #include <openssl/aes.h>   // AES encryption/decryption functions
@@ -39,6 +38,14 @@
 #include <openssl/rsa.h>
 #include <openssl/pem.h>
 #include <openssl/err.h>
+#ifdef __linux__
+    #include <linux/if.h>
+    #include <linux/sockios.h>
+#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
+    #include <net/if.h>
+#endif
+
+// Custom headers specific to the program
 #include "ocilib.h"
 #include "dpi.h"
 

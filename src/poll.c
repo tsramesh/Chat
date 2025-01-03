@@ -42,6 +42,7 @@ char * e_private_key = NULL;  // End point process private key
  * Exits the program if any operation fails.
  */
 int setup_server_socket(int *port) {
+    log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Starting setup_server_socket");
     int sockfd = 0; // File descriptor for the server socket
 
     char *interface = 0;
@@ -50,7 +51,7 @@ int setup_server_socket(int *port) {
 
     // Step 1: Create the server socket    
     if((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1){
-        log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "ERR_%d: Server set up failed!: %s", errno, strerror(errno));
+        log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "FATAL ERR_%d: Server set up failed!: %s", errno, strerror(errno));
         exit(-1);
     }
 
@@ -64,7 +65,7 @@ int setup_server_socket(int *port) {
 
     // Step 2: Bind the socket to the specified address and port
     if ((bind(sockfd, (struct sockaddr *)&address, sizeof(address))) == -1) {
-        log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "ERR_%d: Failed to bind socket to port %d on server %s: %s", errno, *port, server_ip, strerror(errno));
+        log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "FATAL ERR_%d: Failed to bind socket to port %d on server %s: %s", errno, *port, server_ip, strerror(errno));
         exit(-1);
     }
     log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Socket bind on address %s successful", server_ip);
@@ -73,7 +74,7 @@ int setup_server_socket(int *port) {
         // Retrieve the assigned port number
         socklen_t addr_len = sizeof(address);
         if (getsockname(sockfd, (struct sockaddr *)&address, &addr_len) == -1){
-            log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "ERR_%d: Could not retrieve the server port number: %s", errno, strerror(errno));
+            log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "FATAL ERR_%d: Could not retrieve the server port number: %s", errno, strerror(errno));
             exit(-1);
         }
         *port = ntohs(address.sin_port);
@@ -82,11 +83,12 @@ int setup_server_socket(int *port) {
 
     // Step 3: Start listening for incoming connections
     if (listen(sockfd, BACKLOG) == -1){
-        log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "ERR_%d: Socket listen failed: %s", errno, strerror(errno));
+        log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "FATAL ERR_%d: Socket listen failed: %s", errno, strerror(errno));
         exit(-1);
     }
     // Log success and return the server socket descriptor
     log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Server listening on port %d at address %s... awaiting new connections", *port, server_ip);
+    log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Completed setup_server_socket() successfully");
     
     return sockfd;
 }
@@ -101,6 +103,7 @@ int setup_server_socket(int *port) {
  * @return 0 on success, or terminates the program on error.
  */
 int set_non_blocking(int socket_fd) {
+    log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Starting setup_server_socket");
     int flags = 0;
     
     if ((flags = fcntl(socket_fd, F_GETFL, 0)) == -1) {
@@ -109,7 +112,8 @@ int set_non_blocking(int socket_fd) {
     if (fcntl(socket_fd, F_SETFL, flags | O_NONBLOCK) == -1) {
         log_message(LOG_WARN, process, __func__, __FILE__, __LINE__, "ERR_%d: Call to fcntl(F_SETFL) failed: %s", errno, strerror(errno));
     }
-    log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Successful", errno, strerror(errno));
+    log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Completed setup_server_socket() successfully");
+
     return 0;
 }
 
@@ -122,12 +126,13 @@ int set_non_blocking(int socket_fd) {
  * @param sockfd The listening socket file descriptor.
  */
 int poll_newconn() {
+    log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Starting setup_server_socket");
     struct sockaddr_in client_address;
     socklen_t client_len = sizeof(client_address);
 
     int sockfd = 0;
     if((sockfd = accept(server_fd, (struct sockaddr *)&client_address, &client_len)) == -1) {
-        log_message(LOG_WARN, process, __func__, __FILE__, __LINE__, "ERR_%d: Accepting new connection failed: %s", errno, strerror(errno));
+        log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "FATAL ERR_%d: Accepting new connection failed: %s", errno, strerror(errno));
         return -1;
     }
 
@@ -137,7 +142,7 @@ int poll_newconn() {
 
     if (pid < 0) {
         // Error occurred
-        log_message(LOG_CRITICAL, process, __func__, __FILE__, __LINE__, "ERR_%d: fork() failed: %s", errno, strerror(errno));
+        log_message(LOG_CRITICAL, process, __func__, __FILE__, __LINE__, "CRITICAL ERR_%d: fork() failed: %s", errno, strerror(errno));
         return -1;
     } else if (pid == 0) {
         // Child process
@@ -173,6 +178,7 @@ int poll_newconn() {
     // Add the new connection to the client list
     log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Adding the client to the list");
     add_client(manager, sockfd, client_address);
+    log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Completed poll_newconn() successfully");
 
     return sockfd;
 }
@@ -188,6 +194,7 @@ int poll_newconn() {
  * @param sockfd The file descriptor of the client socket.
  */
 void poll_data(int poll_fd, int sockfd) {
+    log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Starting poll_data()");
     unsigned char *buffer = 0;
     size_t bytes_read = 0;
 
@@ -201,17 +208,21 @@ void poll_data(int poll_fd, int sockfd) {
         REMOVE_FROM_POLL(poll_fd, sockfd);
         log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Removed socket %d from poll list", sockfd);
         close(sockfd);
-        log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "CClosed socket %d", sockfd);
+        log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Closed socket %d", sockfd);
         Alive = 0;
         log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Client flag set for graceful exit");
     } else {
         // Print the received data
-        log_message(LOG_CRITICAL, process, __func__, __FILE__, __LINE__, "%s", buffer);
+        log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "%s", buffer);
 
+        command c;
+        c.sockfd = sockfd;
+        c.string = strdup((const char *)buffer);
+        handle_command((void *)&c);
         // Free the memory allocated by the `read_data` function
         log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Freeing memory location %x", buffer);
-        if(buffer) free(buffer);
     }
+    log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Completed poll_data() successfully");
 }
 
 
@@ -227,7 +238,7 @@ void poll_data(int poll_fd, int sockfd) {
  */
 // void poll_events(int poll_fd, void* events, int num_events, int sockfd) {
 void poll_events(int poll_fd, void* events, int num_events) {
-    log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Caught %d socket events.", num_events);
+    log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Starting poll_events() - Caught %d socket events.", num_events);
     for (int i = 0; i < num_events; ++i) {
         log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Processing event %d...", i);
         int fd = EVENT_FD(&((EVENT_STRUCT*)events)[i]);
@@ -243,6 +254,7 @@ void poll_events(int poll_fd, void* events, int num_events) {
             }
         }
     }
+    log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Completed poll_events() successfully");
 }
 
 
@@ -262,14 +274,14 @@ void* poll_loop(void * fd) {
     int sockfd = *(int *)fd;
 
     // Set up the poll instance
-    log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Setting up event poll for monitoring incoming data");
+    log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Starting poll_loop() - Setting up event poll for monitoring incoming data");
     int poll_fd = SETUP_POLL(process);
 
     int max_events = INIT_EVENT_SIZE;
     log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Allocating %zu bytes of memory for capturing events", max_events * sizeof(EVENT_STRUCT));
     EVENT_STRUCT* events = malloc(max_events * sizeof(EVENT_STRUCT));
     if ( !events ) {
-        log_message(LOG_CRITICAL, process, __func__, __FILE__, __LINE__, "Memory allocation failed");
+        log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "FATAL ERR_%d: Memory allocation failed: %s", errno, strerror(errno));
         return NULL;
     }
 
@@ -293,8 +305,9 @@ void* poll_loop(void * fd) {
         log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Awaiting new events (incoming data or new client connection)");
         int num_events = WAIT_FOR_EVENTS(poll_fd, events, max_events, process);
         if(num_events < 0){
-            log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "FATAL: WAIT_FOR_EVENTS failed... immediate program termination");
-            exit(0);
+            log_message(LOG_WARN, process, __func__, __FILE__, __LINE__, "FATAL: WAIT_FOR_EVENTS failed... immediate program termination");
+            Alive = 0;
+            continue;
         }
 
         // Process the events
@@ -306,7 +319,7 @@ void* poll_loop(void * fd) {
             max_events *= 2;
             events = realloc(events, max_events * sizeof(EVENT_STRUCT));
             if ( ! events ) {
-                log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "FATAL: Memory allocation failed... immediate program termination");
+                log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "FATAL ERR_%d: Memory allocation failed: %s", errno, strerror(errno));
                 exit(-1);
             }
         }
@@ -315,8 +328,8 @@ void* poll_loop(void * fd) {
     log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Releasing database session back to session pool");
     odpic_release_session_to_pool(cn);
     
-    log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Gracefully closing database connection");
-    odpic_close_session_pool((dpiPool *)pl);
+    // log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Gracefully closing database connection");
+    // odpic_close_session_pool((dpiPool *)pl);
 
     // Cleanup
     log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Cleaning up \"EVENT_STRUCT* events\" structure");
@@ -324,6 +337,7 @@ void* poll_loop(void * fd) {
 
     log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Gracefully closing poll (poll_fd)");
     close(poll_fd);
+    log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Completed poll_loop() successfully");
     return NULL;
 }
 
@@ -348,11 +362,11 @@ int exchange_public_keys(int sockfd, const char *my_public_key, size_t my_public
     unsigned char *data = 0;
     size_t data_len = 0;
 
-    log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Exchanging public keys with the end point");
+    log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Starting exchange_public_keys() - Exchanging public keys with the end point");
     if (server_end) { // Server-side logic
         data = malloc(my_public_key_len + sizeof(uint32_t));
         if( !data ){
-            log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "FATAL: Memory allocation for public storage failed");
+            log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "FATAL ERR_%d: Memory allocation failed: %s", errno, strerror(errno));
             exit(-1);
         }
         log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Allocated %zu bytes for storing public key", my_public_key_len + sizeof(uint32_t));
@@ -390,7 +404,7 @@ int exchange_public_keys(int sockfd, const char *my_public_key, size_t my_public
     
         log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Allocating %zu bytes of memory to hold peer public key", *their_public_key_len);
         if ( !(*their_public_key = malloc(*their_public_key_len)) ){
-            log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "FATAL: Memory allocation failed... immediate program termination");
+            log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "FATAL ERR_%d: Memory allocation failed: %s", errno, strerror(errno));
             exit(-1);
         }
 
@@ -406,6 +420,6 @@ int exchange_public_keys(int sockfd, const char *my_public_key, size_t my_public
     }
     log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Freeing up \"data\" allocated memory");
     free(data);
-
+    log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Completed exchange_public_keys() successfully");
     return ret;
 }

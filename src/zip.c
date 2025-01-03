@@ -22,20 +22,32 @@
  * - If the data is too short (less than 2 bytes), it is considered not compressed.
  */
 bool is_compressed(const unsigned char *data, size_t len) {
+    // Step 1: Validate the input length
     if (len < 2) {
+        log_message(LOG_WARN, process, __func__, __FILE__, __LINE__, "Data length is too short (less than 2 bytes). Unable to check for compression.");
         return false; // Data is too short to contain a valid zlib header
     }
 
+    // Step 2: Extract the first two bytes for the zlib header check
     uint8_t cmf = data[0]; // First byte: Compression Method and Flags
     uint8_t flg = data[1]; // Second byte: Flags
 
-    // Check if the compression method is 8 (deflate) and if the header checksum is valid
+    log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Extracted zlib header: CMF = 0x%02x, FLG = 0x%02x", cmf, flg);
+
+    // Step 3: Check if the compression method is 8 (Deflate) and if the header checksum is valid
+    // The zlib header format:
+    // - CMF (Compression Method and Flags) should have the last 4 bits (0x0F) equal to 8 for deflate.
+    // - The combination of CMF and FLG, when divided by 31, should give a remainder of 0 (checksum check).
     if ((cmf & 0x0F) == 8 && ((cmf << 8 | flg) % 31 == 0)) {
-        return true; // The data has a valid zlib header
+        log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Data is identified as zlib compressed (valid header).");
+        return true; // The data has a valid zlib header, indicating compression using the deflate method
     }
 
+    // Step 4: Return false if the header check fails
+    log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Data does not appear to be zlib compressed (invalid header).");
     return false; // The data does not appear to be zlib-compressed
 }
+
 
 /**
  * Compresses the input data using the zlib library.
@@ -55,17 +67,22 @@ bool is_compressed(const unsigned char *data, size_t len) {
  * - Ensure the zlib library is included in your build process.
  */
 int compress_data(const unsigned char *source, size_t source_len, unsigned char **dest, size_t *dest_len) {
-    z_stream stream;  // zlib compression stream structure
+    // zlib compression stream structure
+    z_stream stream;  
     int ret;
 
-    // Allocate memory for the compressed data
+    // Step 1: Allocate memory for the compressed data
     *dest_len = compressBound(source_len); // Get the maximum possible size for compressed data
+    log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Allocating %zu bytes for compressed data.", *dest_len);
+
     *dest = malloc(*dest_len);            // Allocate memory for the output buffer
     if (*dest == NULL) {                  // Handle memory allocation failure
+        log_message(LOG_ERROR, process, __func__, __FILE__, __LINE__, "Memory allocation for compressed data failed.");
         return Z_MEM_ERROR;
     }
+    log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Memory allocation successful. Proceeding with compression.");
 
-    // Initialize the compression stream structure
+    // Step 2: Initialize the compression stream structure
     stream.zalloc = Z_NULL;               // Use default memory allocation
     stream.zfree = Z_NULL;                // Use default memory free
     stream.opaque = Z_NULL;               // No custom state needed
@@ -74,28 +91,37 @@ int compress_data(const unsigned char *source, size_t source_len, unsigned char 
     stream.avail_out = *dest_len;         // Size of output buffer
     stream.next_out = (Bytef *)*dest;     // Pointer to output buffer
 
-    // Initialize the compression process with default compression level
+    log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Initializing compression stream with input size %zu.", source_len);
+
+    // Step 3: Initialize the compression process with default compression level
     ret = deflateInit(&stream, Z_DEFAULT_COMPRESSION);
     if (ret != Z_OK) {                    // Handle initialization failure
+        log_message(LOG_ERROR, process, __func__, __FILE__, __LINE__, "Compression initialization failed with error code: %d.", ret);
         free(*dest);                      // Free allocated memory
         return ret;
     }
+    log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Compression stream initialized successfully.");
 
-    // Perform the compression in one step, with the finish flag
+    // Step 4: Perform the compression in one step, with the finish flag
     ret = deflate(&stream, Z_FINISH);
     if (ret != Z_STREAM_END) {            // Handle compression errors
+        log_message(LOG_ERROR, process, __func__, __FILE__, __LINE__, "Compression failed during the deflate process with error code: %d.", ret);
         deflateEnd(&stream);              // Clean up the zlib stream
         free(*dest);                      // Free allocated memory
         return ret == Z_OK ? Z_BUF_ERROR : ret; // Return appropriate error code
     }
 
-    // Update the output length with the actual size of compressed data
-    *dest_len = stream.total_out;
+    // Step 5: Update the output length with the actual size of compressed data
+    *dest_len = stream.total_out;         // The actual size of compressed data
+    log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Compression completed successfully. Compressed data size: %zu bytes.", *dest_len);
 
-    // Clean up and return success
+    // Step 6: Clean up and return success
     deflateEnd(&stream);
+    log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Compression process cleaned up. Returning success.");
+
     return Z_OK;
 }
+
 
 /**
  * Decompresses the input data using the zlib library.
@@ -115,24 +141,31 @@ int compress_data(const unsigned char *source, size_t source_len, unsigned char 
  * - Ensure the `is_compressed` function is implemented to determine if the input data is compressed.
  */
 int decompress_data(const unsigned char *source, size_t source_len, unsigned char **dest, size_t *dest_len) {
-    z_stream stream;  // zlib decompression stream structure
+    // zlib decompression stream structure
+    z_stream stream;  
     int ret;
 
-    // Check if the input data is already uncompressed
+    // Step 1: Check if the input data is already uncompressed
+    log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Checking if the data is already uncompressed.");
     if (!is_compressed(source, source_len)) {
         *dest_len = source_len;         // Set output length to input length
-        *dest = (uint8_t *)source;     // Point to the original input buffer
-        return 0;                      // Return success without decompression
+        *dest = (uint8_t *)source;      // Point to the original input buffer
+        log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Data is already uncompressed. Returning original buffer.");
+        return 0;  // Return success without decompression
     }
 
-    // Initial guess for the decompressed buffer size
+    // Step 2: Initial guess for the decompressed buffer size
     *dest_len = source_len * 2;
+    log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Data is compressed. Initializing output buffer of size %zu.", *dest_len);
+
     *dest = malloc(*dest_len);         // Allocate memory for the output buffer
     if (*dest == NULL) {               // Handle memory allocation failure
+        log_message(LOG_ERROR, process, __func__, __FILE__, __LINE__, "Memory allocation for decompressed data failed.");
         return Z_MEM_ERROR;
     }
+    log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Memory allocation successful. Proceeding with decompression.");
 
-    // Initialize the decompression stream structure
+    // Step 3: Initialize the decompression stream structure
     stream.zalloc = Z_NULL;            // Use default memory allocation
     stream.zfree = Z_NULL;             // Use default memory free
     stream.opaque = Z_NULL;            // No custom state needed
@@ -141,40 +174,52 @@ int decompress_data(const unsigned char *source, size_t source_len, unsigned cha
     stream.avail_out = *dest_len;      // Size of output buffer
     stream.next_out = (Bytef *)*dest;  // Pointer to output buffer
 
-    // Initialize the decompression process
+    log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Initializing decompression stream with input size %zu.", source_len);
+
+    // Step 4: Initialize the decompression process
     ret = inflateInit(&stream);
     if (ret != Z_OK) {                 // Handle initialization failure
+        log_message(LOG_ERROR, process, __func__, __FILE__, __LINE__, "Decompression initialization failed with error code: %d.", ret);
         free(*dest);                   // Free allocated memory
         return ret;
     }
+    log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Decompression stream initialized successfully.");
 
-    // Decompress the data
+    // Step 5: Decompress the data
+    log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Starting decompression loop.");
     while (1) {
         ret = inflate(&stream, Z_NO_FLUSH); // Perform decompression
         if (ret == Z_STREAM_END) break;    // End of the decompressed data
         if (ret != Z_OK) {                 // Handle decompression errors
+            log_message(LOG_ERROR, process, __func__, __FILE__, __LINE__, "Decompression failed with error code: %d.", ret);
             inflateEnd(&stream);           // Clean up the zlib stream
             free(*dest);                   // Free allocated memory
             return ret;
         }
 
-        // Handle insufficient output buffer size
+        // Step 6: Handle insufficient output buffer size
         if (stream.avail_out == 0) {
+            log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Output buffer exhausted. Doubling buffer size.");
             *dest_len *= 2;                // Double the buffer size
             *dest = realloc(*dest, *dest_len); // Reallocate memory
             if (*dest == NULL) {           // Handle reallocation failure
+                log_message(LOG_ERROR, process, __func__, __FILE__, __LINE__, "Memory reallocation failed.");
                 inflateEnd(&stream);
                 return Z_MEM_ERROR;
             }
             stream.avail_out = *dest_len - stream.total_out; // Update available output size
             stream.next_out = (Bytef *)*dest + stream.total_out; // Update output pointer
+            log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Buffer reallocated successfully. New size: %zu.", *dest_len);
         }
     }
 
-    // Update the output length with the actual size of decompressed data
+    // Step 7: Update the output length with the actual size of decompressed data
     *dest_len = stream.total_out;
+    log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Decompression completed successfully. Decompressed data size: %zu bytes.", *dest_len);
 
-    // Clean up and return success
+    // Step 8: Clean up and return success
     inflateEnd(&stream);
+    log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Decompression stream cleaned up. Returning success.");
+
     return Z_OK;
 }

@@ -2,11 +2,13 @@
 #define FILE_H
 
 #include "common.h"
+#include "msg.h"
 
-#define CHUNK_SIZE (1024L * 1024L * 1024L)  // 1 GB
-
-off_t get_file_size(const char *file_path);
-size_t send_file(int sockfd, const char *file_path, unsigned char **filecontent);
-size_t recv_file(const char *file_path, const unsigned char *buffer, uint64_t size)
+off_t get_file_size ( const char *file_path );
+void split_path ( const char *path, char **directory, char **filename );
+size_t get_network_mtu ( int sockfd );
+size_t get_optimal_send_size ( int sockfd );
+size_t send_file ( int sockfd, char * file_name_with_path );
+size_t recv_file ( int sockfd, char * file_name, size_t size );
 
 #endif // FILE_H

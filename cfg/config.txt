@@ -5,3 +5,5 @@ DB_HOST = fedora
 DB_PORT = 1521
 PORT    = 6000
 LOGGING = 0x0001
+PAYLOAD = 65536
+TEMPDIR = /Users/tramesh/Downloads

@@ -28,21 +28,42 @@ RSA_KEY endpoint_private; // End point process private key
  * @return 0 on success, or a non-zero value on error.
  */
 int sha256(const unsigned char *data, size_t data_len, unsigned char *key) {
+    log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Starting SHA-256 hash computation");
+
     EVP_MD_CTX *ctx = EVP_MD_CTX_new();
-    CHECK(ctx != NULL, "Failed to create EVP_MD_CTX", (void)0, CRITICAL_ERROR, process);
+    if (!ctx) {
+        log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "ERR_%d: Failed to create EVP_MD_CTX: %s", errno, strerror(errno));
+        return -1;
+    }
+    log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "EVP_MD_CTX_new successful");
 
-    // Initialize the digest context for SHA-256
-    CHECK(EVP_DigestInit_ex(ctx, EVP_sha256(), NULL), "Digest initialization failed", EVP_MD_CTX_free(ctx), ACCEPTABLE_ERROR, process);
+    if (!EVP_DigestInit_ex(ctx, EVP_sha256(), NULL)) {
+        log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "ERR_%d: Digest initialization failed: %s", errno, strerror(errno));
+        EVP_MD_CTX_free(ctx);
+        return -1;
+    }
+    log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "EVP_DigestInit_ex successful");
 
-    // Update the digest with the input data
-    CHECK(EVP_DigestUpdate(ctx, data, data_len), "Digest update failed", EVP_MD_CTX_free(ctx), ACCEPTABLE_ERROR, process);
 
-    // Finalize the digest and store the result in `key`
+    if (!EVP_DigestUpdate(ctx, data, data_len)) {
+        log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "ERR_%d: Digest update failed: %s", errno, strerror(errno));
+        EVP_MD_CTX_free(ctx);
+        return -1;
+    }
+    log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "EVP_DigestUpdate successful");
+
+
     unsigned int hash_len;
-    CHECK(EVP_DigestFinal_ex(ctx, key, &hash_len), "Digest finalization failed", EVP_MD_CTX_free(ctx), ACCEPTABLE_ERROR, process);
+    if (!EVP_DigestFinal_ex(ctx, key, &hash_len)) {
+        log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "ERR_%d: Digest finalization failed: %s", errno, strerror(errno));
+        EVP_MD_CTX_free(ctx);
+        return -1;
+    }
+    log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "EVP_DigestFinal_ex successful");
 
-    // Free the context
+
     EVP_MD_CTX_free(ctx);
+    log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "SHA-256 hash computation completed successfully");
     return 0;
 }
 
@@ -51,9 +72,9 @@ void print_openssl_error(const char *context) {
     if (err) {
         char err_msg[256];
         ERR_error_string_n(err, err_msg, sizeof(err_msg));
-        fprintf(stderr, "OpenSSL Error in %s: %s\n", context, err_msg);
+        log_message(LOG_WARN, process, __func__, __FILE__, __LINE__, "OpenSSL Error in %s: %s", context, err_msg);
     } else {
-        fprintf(stderr, "Unknown OpenSSL error in %s\n", context);
+        log_message(LOG_WARN, process, __func__, __FILE__, __LINE__, "Unknown OpenSSL error in %s", context);
     }
 }
 
@@ -70,21 +91,76 @@ void print_openssl_error(const char *context) {
  * @param ciphertext_len Pointer to a variable that will hold the length of the encrypted ciphertext.
  * @return 0 on success, or a non-zero value on error.
  */
-int cipher( unsigned char *input, size_t input_len, unsigned char * key, unsigned char **output, size_t *output_len, int crypt_flag) {
+int cipher(unsigned char *input, size_t input_len, unsigned char *key, unsigned char **output, size_t *output_len, int crypt_flag) {
+    log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Starting AES-256 encryption/decryption");
+
     EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
-    if (! EVP_CipherInit_ex(ctx, EVP_aes_256_cbc(), NULL, NULL, NULL, crypt_flag)) return -1;         // Initialize the cipher context with AES-256 CBC mode
-    if (! EVP_CipherInit_ex(ctx, NULL, NULL, key, key + 16, crypt_flag)) return -1;                 // Set the key and IV
-    if (! EVP_CIPHER_CTX_set_padding(ctx, 1)) return -1;                                              // Enable padding
-    if (! (*output = (unsigned char *)malloc(input_len + EVP_CIPHER_CTX_block_size(ctx)))) return -1; // Allocate memory for output buffer
+    if (!ctx) {
+        log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "ERR_%d: Failed to create EVP_CIPHER_CTX: %s", errno, strerror(errno));
+        return -1;
+    }
+    log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "EVP_CIPHER_CTX_new successful");
+
+
+    if (!EVP_CipherInit_ex(ctx, EVP_aes_256_cbc(), NULL, NULL, NULL, crypt_flag)) {
+        log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "ERR_%d: Cipher initialization failed: %s", errno, strerror(errno));
+        EVP_CIPHER_CTX_free(ctx);
+        return -1;
+    }
+    log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "EVP_CipherInit_ex successful");
+
+
+    if (!EVP_CipherInit_ex(ctx, NULL, NULL, key, key + 16, crypt_flag)) {
+        log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "ERR_%d: Setting key and IV failed: %s", errno, strerror(errno));
+        EVP_CIPHER_CTX_free(ctx);
+        return -1;
+    }
+    log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "EVP_CipherInit_ex successful");
+
+
+    if (!EVP_CIPHER_CTX_set_padding(ctx, 1)) {
+        log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "ERR_%d: Enabling padding failed: %s", errno, strerror(errno));
+        EVP_CIPHER_CTX_free(ctx);
+        return -1;
+    }
+    log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "EVP_CIPHER_CTX_set_padding successful");
+
+
+    *output = (unsigned char *)malloc(input_len + EVP_CIPHER_CTX_block_size(ctx));
+    if (!*output) {
+        log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "ERR_%d: Memory allocation for output buffer failed: %s", errno, strerror(errno));
+        EVP_CIPHER_CTX_free(ctx);
+        return -1;
+    }
+    log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Alocated memory for (*output)");
+
 
     int len = 0, total_len = 0;
-    if (! EVP_CipherUpdate(ctx, *output, &len, input, input_len)) return -1;                          // Encrypt/Decrypt the input
+    if (!EVP_CipherUpdate(ctx, *output, &len, input, input_len)) {
+        log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "ERR_%d: Cipher update failed: %s", errno, strerror(errno));
+        free(*output);
+        EVP_CIPHER_CTX_free(ctx);
+        return -1;
+    }
+    log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "EVP_CipherUpdate successful");
+
+
     total_len += len;
 
-    if (! EVP_CipherFinal_ex(ctx, *output + total_len, &len)) return -1;                              // Finalize encryption/decryption and append remaining data
+    if (!EVP_CipherFinal_ex(ctx, *output + total_len, &len)) {
+        log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "ERR_%d: Cipher finalization failed: %s", errno, strerror(errno));
+        free(*output);
+        EVP_CIPHER_CTX_free(ctx);
+        return -1;
+    }
+    log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "EVP_CipherFinal_ex successful");
+
+
     total_len += len;
     *output_len = total_len;
-    EVP_CIPHER_CTX_free(ctx); // Free the context
+
+    EVP_CIPHER_CTX_free(ctx);
+    log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "AES-256 encryption/decryption completed successfully");
     return 0;
 }
 
@@ -104,61 +180,126 @@ int cipher( unsigned char *input, size_t input_len, unsigned char * key, unsigne
  * - On failure, `public_key` and `private_key` are freed if they were allocated.
  * - Uses OpenSSL's EVP_PKEY API for key generation.
  */
+/**
+ * Generates a 4096-bit RSA public and private key pair.
+ *
+ * The generated keys are stored in memory buffers, which are allocated dynamically. 
+ * The caller is responsible for freeing these buffers after use.
+ *
+ * @param[out] public_key Pointer to store the dynamically allocated public key string.
+ * @param[out] public_key_len Pointer to store the length of the public key.
+ * @param[out] private_key Pointer to store the dynamically allocated private key string.
+ * @param[out] private_key_len Pointer to store the length of the private key.
+ * @return int Returns 0 on success, -1 on failure.
+ * 
+ * Note:
+ * - On failure, `public_key` and `private_key` are freed if they were allocated.
+ * - Uses OpenSSL's EVP_PKEY API for key generation.
+ */
 int generate_rsa_key_pair_4096(char **public_key, size_t *public_key_len, char **private_key, size_t *private_key_len) {
+    log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Starting RSA 4096-bit key pair generation");
+
     int ret = 0;  // Return value to indicate success or failure.
 
     // Create a context for key generation using RSA.
     EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, NULL);
+    if (!ctx) {
+        log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "ERR_%d: Failed to create EVP_PKEY_CTX: %s", errno, strerror(errno));
+        return -1;
+    }
+    log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "ERR_%d: Failed to create EVP_PKEY_CTX: %s", errno, strerror(errno));
+
     EVP_PKEY *pkey = NULL;  // Placeholder for the generated key pair.
 
     // Create memory BIOs to store the PEM-encoded keys in memory.
-    BIO *pub_bio = BIO_new(BIO_s_mem()), *priv_bio = BIO_new(BIO_s_mem());
+    BIO *pub_bio = BIO_new(BIO_s_mem());
+    BIO *priv_bio = BIO_new(BIO_s_mem());
 
-    // Check for initialization errors and start key generation.
-    if (!ctx || !pub_bio || !priv_bio || 
-        EVP_PKEY_keygen_init(ctx) <= 0 ||  // Initialize the key generation context.
-        EVP_PKEY_CTX_set_rsa_keygen_bits(ctx, 4096) <= 0 ||  // Set key size to 4096 bits.
-        EVP_PKEY_keygen(ctx, &pkey) <= 0 ||  // Generate the key pair.
-        !PEM_write_bio_PUBKEY(pub_bio, pkey) ||  // Write the public key to the memory BIO.
-        !PEM_write_bio_PrivateKey(priv_bio, pkey, NULL, NULL, 0, NULL, NULL)) {  // Write the private key to the memory BIO.
-        
-        // If any error occurs, print the error message and set the return value to -1.
-        printf("Error: %s\n", ERR_error_string(ERR_get_error(), NULL));
-        ret = -1;
-
-    } else {
-        // Determine the lengths of the keys in memory.
-        size_t pub_len = BIO_pending(pub_bio), priv_len = BIO_pending(priv_bio);
-
-        // Allocate memory for the public and private keys.
-        if (!(*public_key = malloc(pub_len + 1)) || !(*private_key = malloc(priv_len + 1))) {
-            ret = -1;  // Memory allocation failed.
-        } else {
-            // Read the keys from the BIOs into the allocated buffers.
-            BIO_read(pub_bio, *public_key, pub_len);
-            BIO_read(priv_bio, *private_key, priv_len);
-
-            // Null-terminate the key strings.
-            (*public_key)[pub_len] = '\0';
-            *public_key_len = pub_len;
-            (*private_key)[priv_len] = '\0';
-            *private_key_len = priv_len;
-        }
+    if (!pub_bio || !priv_bio) {
+        log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "ERR_%d: Failed to create BIOs: %s", errno, strerror(errno));
+        EVP_PKEY_CTX_free(ctx);
+        return -1;
     }
+
+    // Initialize the key generation context.
+    if (EVP_PKEY_keygen_init(ctx) <= 0) {
+        log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "ERR_%d: Key generation initialization failed: %s", errno, strerror(errno));
+        EVP_PKEY_CTX_free(ctx);
+        BIO_free(pub_bio);
+        BIO_free(priv_bio);
+        return -1;
+    }
+
+    // Set key size to 4096 bits.
+    if (EVP_PKEY_CTX_set_rsa_keygen_bits(ctx, 4096) <= 0) {
+        log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "ERR_%d: Setting RSA key size failed: %s", errno, strerror(errno));
+        EVP_PKEY_CTX_free(ctx);
+        BIO_free(pub_bio);
+        BIO_free(priv_bio);
+        return -1;
+    }
+
+    // Generate the key pair.
+    if (EVP_PKEY_keygen(ctx, &pkey) <= 0) {
+        log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "ERR_%d: Key generation failed: %s", errno, strerror(errno));
+        EVP_PKEY_CTX_free(ctx);
+        BIO_free(pub_bio);
+        BIO_free(priv_bio);
+        return -1;
+    }
+
+    // Write the public key to the memory BIO.
+    if (!PEM_write_bio_PUBKEY(pub_bio, pkey)) {
+        log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "ERR_%d: Writing public key to BIO failed: %s", errno, strerror(errno));
+        EVP_PKEY_free(pkey);
+        EVP_PKEY_CTX_free(ctx);
+        BIO_free(pub_bio);
+        BIO_free(priv_bio);
+        return -1;
+    }
+
+    // Write the private key to the memory BIO.
+    if (!PEM_write_bio_PrivateKey(priv_bio, pkey, NULL, NULL, 0, NULL, NULL)) {
+        log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "ERR_%d: Writing private key to BIO failed: %s", errno, strerror(errno));
+        EVP_PKEY_free(pkey);
+        EVP_PKEY_CTX_free(ctx);
+        BIO_free(pub_bio);
+        BIO_free(priv_bio);
+        return -1;
+    }
+
+    // Determine the lengths of the keys in memory.
+    size_t pub_len = BIO_pending(pub_bio);
+    size_t priv_len = BIO_pending(priv_bio);
+
+    // Allocate memory for the public and private keys.
+    if (!(*public_key = malloc(pub_len + 1)) || !(*private_key = malloc(priv_len + 1))) {
+        log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "ERR_%d: Memory allocation for keys failed: %s", errno, strerror(errno));
+        EVP_PKEY_free(pkey);
+        EVP_PKEY_CTX_free(ctx);
+        BIO_free(pub_bio);
+        BIO_free(priv_bio);
+        return -1;
+    }
+
+    // Read the keys from the BIOs into the allocated buffers.
+    BIO_read(pub_bio, *public_key, pub_len);
+    (*public_key)[pub_len] = '\0';
+    *public_key_len = pub_len;
+
+    BIO_read(priv_bio, *private_key, priv_len);
+    (*private_key)[priv_len] = '\0';
+    *private_key_len = priv_len;
 
     // Free resources to avoid memory leaks.
-    BIO_free(pub_bio);  // Free the memory BIO for the public key.
-    BIO_free(priv_bio);  // Free the memory BIO for the private key.
-    EVP_PKEY_free(pkey);  // Free the generated key pair.
-    EVP_PKEY_CTX_free(ctx);  // Free the key generation context.
+    EVP_PKEY_free(pkey);
+    EVP_PKEY_CTX_free(ctx);
+    BIO_free(pub_bio);
+    BIO_free(priv_bio);
 
-    // Free allocated buffers if an error occurred.
-    if (ret == -1) {
-        if (*public_key) free(*public_key);
-        if (*private_key) free(*private_key);
-    }
+    log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "RSA 4096-bit key pair generation completed successfully");
 
-    return ret;  // Return 0 on success, -1 on failure.
+    return ret;
 }
 
 /**

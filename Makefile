@@ -13,8 +13,8 @@ INCLUDE_DIR = include
 $(shell mkdir -p $(OBJ_DIR) $(BIN_DIR))
 
 # Source files
-SRCS_SERVER = main.c poll.c crypt.c msg.c zip.c cmd.c conn.c common.c net.c db.c
-SRCS_CLIENT = client.c poll.c crypt.c msg.c zip.c conn.c cmd.c common.c net.c db.c
+SRCS_SERVER = main.c poll.c crypt.c msg.c zip.c cmd.c conn.c common.c net.c db.c file.c
+SRCS_CLIENT = client.c poll.c crypt.c msg.c zip.c conn.c cmd.c common.c net.c db.c file.c
 
 # Object files
 OBJS_SERVER = $(patsubst %.c, $(OBJ_DIR)/%.o, $(SRCS_SERVER))

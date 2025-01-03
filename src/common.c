@@ -12,6 +12,8 @@ char *log_levels[] = {
 };
 
 char * fstring(const char* format, ...) {
+    log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Starting fstring() computation");
+
     va_list args;
     va_start(args, format);
 
@@ -20,12 +22,16 @@ char * fstring(const char* format, ...) {
     va_end(args);
 
     if (size <= 0) {
+        log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "ERR_%d: Unable to determine the required buffer size: %s", errno, strerror(errno));
         return NULL; // Handle formatting errors
     }
+
+    log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Determined %d bytes are required to create the fstring", size);
 
     // Allocate memory for the formatted string
     char* result = (char*)malloc(size);
     if (!result) {
+        log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "ERR_%d: Memory allocation (required buffer size %d bytes) failed: %s", errno, size, strerror(errno));
         return NULL; // Handle memory allocation failure
     }
 
@@ -34,122 +40,111 @@ char * fstring(const char* format, ...) {
     vsnprintf(result, size, format, args);
     va_end(args);
 
+    log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Completed fstring() successfully");
     return result; // Caller is responsible for freeing the memory
 }
 
-
-
-/**
- * GetConfigValue
- *
- * Reads a key-value pair from a configuration file in the format "KEY = VALUE".
- *
- * @param filename The path to the configuration file.
- * @param key The key whose corresponding value needs to be retrieved.
- * @return A dynamically allocated string containing the value associated with the key,
- *         or NULL if the key is not found or an error occurs. The caller must free the returned memory.
- */
 char* GetConfigValue(const char *filename, const char *key) {
-    // Open the file in read mode
+    log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Starting GetConfigValue() with filename: %s and key: %s", filename, key);
+
     FILE *file = fopen(filename, "r");
-    if (!file) return NULL; // Return NULL if the file cannot be opened
+    if (!file) {
+        log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "ERR_%d: Unable to open file %s: %s", errno, filename, strerror(errno));
+        return NULL;
+    }
 
-    size_t key_len = strlen(key); // Length of the key for comparison
-    char *line = NULL;           // Pointer to hold each line read from the file
-    size_t len = 0;              // Initial buffer size for getline to allocate memory dynamically
-    char *value = NULL;          // Pointer to hold the extracted value (to be returned)
+    size_t key_len = strlen(key);
+    log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Key length calculated: %zu", key_len);
 
-    // Read the file line by line using getline
+    char *line = NULL;
+    size_t len = 0;
+    char *value = NULL;
+
     while (getline(&line, &len, file) != -1) {
-        char *ptr = line; // Pointer to traverse the line
+        log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Processing line: %s", line);
 
-        // Skip leading whitespace in the line
+        char *ptr = line;
+
         while (isspace(*ptr)) ptr++;
 
-        // Check if the current line starts with the key
         if (strncmp(ptr, key, key_len) == 0) {
-            ptr += key_len; // Move the pointer past the key
+            ptr += key_len;
 
-            // Skip any whitespace before the '=' character
             while (isspace(*ptr)) ptr++;
-            if (*ptr == '=') { // Ensure '=' is present
-                ptr++; // Move past '='
 
-                // Skip any whitespace after the '=' character
+            if (*ptr == '=') {
+                ptr++;
+
                 while (isspace(*ptr)) ptr++;
 
-                char *val_start = ptr; // Mark the beginning of the value
+                char *val_start = ptr;
 
-                // Move the pointer to the end of the value or the newline character
                 while (*ptr && *ptr != '\n') ptr++;
 
-                // Trim trailing whitespace from the end of the value
                 while (ptr > val_start && isspace(*(ptr - 1))) ptr--;
 
-                size_t length = ptr - val_start; // Calculate the length of the value
+                size_t length = ptr - val_start;
 
-                // Dynamically allocate memory for the value string
-                value = malloc(length + 1); // +1 for null terminator
-                if (!value) { // Handle memory allocation failure
-                    free(line); // Free dynamically allocated line buffer
-                    fclose(file); // Close the file
-                    return NULL; // Return NULL on memory allocation failure
+                log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Extracted value length: %zu", length);
+
+                value = realloc(value, length + 1);
+                if (!value) {
+                    log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "ERR_%d: Memory allocation for value string failed: %s", errno, strerror(errno));
+                    free(line);
+                    fclose(file);
+                    return NULL;
                 }
 
-                // Copy the value into the allocated memory
                 strncpy(value, val_start, length);
-                value[length] = '\0'; // Null-terminate the string
+                value[length] = '\0';
 
-                break; // Exit the loop after finding the key
+                log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Extracted value: %s", value);
+                break;
             }
         }
     }
 
-    // Free the dynamically allocated memory for the line buffer
     free(line);
-
-    // Close the file
     fclose(file);
 
-    // Return the extracted value (or NULL if the key was not found)
+    if (!value) {
+        log_message(LOG_WARN, process, __func__, __FILE__, __LINE__, "Key %s not found in file %s", key, filename);
+    }
+
+    log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Completed GetConfigValue() successfully");
     return value;
 }
 
-/**
- * ParseTokens
- *
- * Parses the input string and extracts all tokens starting with `:`.
- *
- * @param input The input string to parse.
- * @param count A pointer to an integer where the number of tokens will be stored.
- * @param id A character to be used to identify the delimiter.
- * @return A dynamically allocated array of strings containing tokens starting with `:`.
- *         The caller is responsible for freeing each token and the array itself.
- */
-char ** parse_bind_variables(const char *input, int *count, char id) {
-    if (!input || !count) return NULL;
+char **parse_bind_variables(const char *input, int *count, char id) {
+    log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Starting parse_bind_variables() with input: %s", input);
 
-    // Initialize token count to 0
+    if (!input || !count) {
+        log_message(LOG_WARN, process, __func__, __FILE__, __LINE__, "Invalid arguments passed to parse_bind_variables");
+        return NULL;
+    }
+
     *count = 0;
 
-    // Copy the input string since strtok modifies the string
     char *input_copy = strdup(input);
-    if (!input_copy) return NULL;
+    if (!input_copy) {
+        log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "FATAL ERR_%d: Memory allocation for input copy failed: %s", errno, strerror(errno));
+        return NULL;
+    }
 
-    // Tokenize the string using space and newline as delimiters
+    log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Copied input string: %s", input_copy);
+
     char *token = strtok(input_copy, " \t\n\r");
     char **result = NULL;
 
     while (token) {
-        // Check if the token starts with `:`
+        log_message(LOG_DEBUG, process, __func__, __FILE__, __LINE__, "Processing token: %s", token);
+
         if (token[0] == id) {
-            // Increase the count
             (*count)++;
 
-            // Reallocate memory for the result array
             char **new_result = realloc(result, (*count) * sizeof(char*));
             if (!new_result) {
-                // Free previously allocated memory on failure
+                log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "FATAL ERR_%d: Memory reallocation failed for token array: %s", errno, strerror(errno));
                 for (int i = 0; i < *count - 1; i++) free(result[i]);
                 free(result);
                 free(input_copy);
@@ -158,10 +153,9 @@ char ** parse_bind_variables(const char *input, int *count, char id) {
 
             result = new_result;
 
-            // Allocate memory for the token and store it
             result[*count - 1] = strdup(token);
             if (!result[*count - 1]) {
-                // Free previously allocated memory on failure
+                log_message(LOG_FATAL, process, __func__, __FILE__, __LINE__, "FATAL ERR_%d: Memory allocation failed for token: %s", errno, strerror(errno));
                 for (int i = 0; i < *count - 1; i++) free(result[i]);
                 free(result);
                 free(input_copy);
@@ -169,13 +163,12 @@ char ** parse_bind_variables(const char *input, int *count, char id) {
             }
         }
 
-        // Get the next token
         token = strtok(NULL, " \t\n\r");
     }
 
-    // Free the copied input string
     free(input_copy);
 
+    log_message(LOG_INFO, process, __func__, __FILE__, __LINE__, "Completed parse_bind_variables() successfully with %d tokens", *count);
     return result;
 }
 

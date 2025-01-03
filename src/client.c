@@ -50,8 +50,9 @@ void client_function(const char *server_ip, int server_port) {
         if (strcmp((char *)send_buffer, "QUIT") == 0) {
             Alive = 0;
             break;
-        }
-        write_data( sockfd, send_buffer, strlen((char *)send_buffer), false);
+        } else if (!strncmp((char *)send_buffer, "FILE", 4)){
+            send_file(sockfd, (char *)(send_buffer+5));
+        } else write_data( sockfd, send_buffer, strlen((char *)send_buffer), false);
     }
 
     // Close connection

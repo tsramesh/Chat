@@ -6,6 +6,7 @@
 #include "conn.h"
 #include "net.h"
 #include "db.h"
+#include "cmd.h"
 
 // Platform-specific includes and macros
 #ifdef __linux__
